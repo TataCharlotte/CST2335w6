@@ -1,78 +1,95 @@
 import 'package:flutter/material.dart';
+import 'package:week6/database/app_db.dart';
+import 'package:week6/database/item.dart';
 
-void main() {
-  runApp(const MyApp());
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final database = await $FloorAppDatabase
+      .databaseBuilder('app_database.db')
+      .build();
+
+  runApp(MyApp(database));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final AppDatabase database;
 
-  // This widget is the root of your application.
+  MyApp(this.database, {Key? key}) : super(key: key);
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Shopping List',
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
-      ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      title: 'Shopping List with Database',
+      theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor:Colors.deepPurple),),
+      home: ShoppingListPage(database: database),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
+class ShoppingListPage extends StatefulWidget {
+  final AppDatabase database;
 
-  final String title;
+  const ShoppingListPage({Key? key, required this.database}) : super(key: key);
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<ShoppingListPage> createState() => _ShoppingListPageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-
+class _ShoppingListPageState extends State<ShoppingListPage> {
   final TextEditingController _itemController = TextEditingController();
   final TextEditingController _quantityController = TextEditingController();
-  final List<Map<String, String>> _items = [];
 
-  void _addItem() {
-    final item = _itemController.text.trim();
-    final quantity = _quantityController.text.trim();
+  List<Item> _items = [];
 
+  @override
+  void initState() {
+    super.initState();
+    _loadItemsFromDb();
+  }
+
+  Future<void> _loadItemsFromDb() async {
+    final items = await widget.database.itemDao.findAllItems();
+    setState(() {
+      _items = items;
+    });
+  }
+
+  Future<void> _addItem() async {
+    final name = _itemController.text.trim();
+    final quantity = int.tryParse(_quantityController.text.trim()) ?? 0;
     // if its not empty add it to the _items list, and clear the textfield.
-    if (item.isNotEmpty && quantity.isNotEmpty) {
-      setState(() {
-        _items.add({'item': item, 'quantity': quantity});
-      });
+    if (name.isNotEmpty && quantity > 0) {
+      final newItem = Item(name: name, quantity: quantity);
+      await widget.database.itemDao.insertItem(newItem);
       _itemController.clear();
       _quantityController.clear();
+      await _loadItemsFromDb();
     }
   }
 
-  //Prompt the alertDialog, if click "yes"  setState to delete, if click "no"
-  void _confirmDelete(int index) {
+  Future<void> _deleteItem(Item item) async {
+    await widget.database.itemDao.deleteItem(item);
+    await _loadItemsFromDb();
+  }
+
+//Prompt the alertDialog, if click "yes"  setState to delete, if click "no"
+  void _confirmDelete(Item item) {
     showDialog(
       context: context,
-      builder: (context) =>
-          AlertDialog(
-            title: const Text('Delete Item'),
-            content: const Text('Do you want to delete this item?'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(), // No
-                child: const Text('No'),
-              ),
-              TextButton(
-                onPressed: () {
-                  setState(() {
-                    _items.removeAt(index);
-                  });
-                  Navigator.of(context).pop(); // Yes
-                },
-                child: const Text('Yes'),
-              ),
-            ],
+      builder: (_) => AlertDialog(
+        title: const Text('Delete Item'),
+        content: Text('Delete "${item.name}"?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('No')),
+          TextButton(
+            onPressed: () async {
+              await _deleteItem(item);
+              Navigator.pop(context);
+            },
+            child: const Text('Yes'),
           ),
+        ],
+      ),
     );
   }
 
@@ -80,19 +97,15 @@ class _MyHomePageState extends State<MyHomePage> {
   void dispose() {
     _itemController.dispose();
     _quantityController.dispose();
-    super.dispose(); // free the memory of what was typed
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Theme
-            .of(context)
-            .colorScheme
-            .inversePrimary,
-        title: const Text('Shopping List'),
-      ),
+          backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+          title: const Text('Shopping List with DB')),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -101,59 +114,52 @@ class _MyHomePageState extends State<MyHomePage> {
             Row(
               children: [
                 Expanded(
-                  child:
-                  TextField(controller: _itemController, // item textfield
+                  child: TextField(
+                    controller: _itemController,
                     decoration: const InputDecoration(
-                      hintText: "Type the item here",
-                      border: OutlineInputBorder(),
-                    ),),),
+                        hintText: 'Type the item here', border: OutlineInputBorder()),
+                  ),
+                ),
                 const SizedBox(width: 2),
                 Expanded(
-                  child:
-                  TextField(controller: _quantityController, // quantityfield
+                  child: TextField(
+                    controller: _quantityController,
                     decoration: const InputDecoration(
-                      hintText: "Type the quantity here",
-                      border: OutlineInputBorder(),
-                    ),
+                        hintText: 'Type the quantity here',border:OutlineInputBorder()),
                     keyboardType: TextInputType.number,
-                  ),),
-                const SizedBox(width: 10),
-
-                //Add item when click " Click here"
-                ElevatedButton(
-                  onPressed: _addItem,
-                  child: const Text("Click here"),
+                  ),
                 ),
+                const SizedBox(width: 10),
+                ElevatedButton(
+                    onPressed: _addItem,
+                    child: const Text('Click here')),
               ],
             ),
             const SizedBox(height: 20),
-
             Expanded(
-              child: _items.isEmpty //Display messages when its empty in the list
-                  ? const Center(child: Text("There are no items in the list"))
+              child: _items.isEmpty
+                  ? const Center(child: Text('There are no items in the list'))
                   : ListView.builder(
                 itemCount: _items.length,
                 itemBuilder: (context, index) {
                   final item = _items[index];
-                  return GestureDetector( // for the onlongpress
-                    onLongPress: () => _confirmDelete(index),
-                    child: Row(
+                  return GestureDetector(
+                    onLongPress: () => _confirmDelete(item),
+                    child:Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children:[
-                        Text("${index + 1}. "), // index +1 ,number start from 1
-                        Text(item['item']!), // item name
-                        Text("   Qty: ${item['quantity']}"),
-
-                  ]
-                    ),
+                        Text("${index + 1}. "),
+                        Text(item.name),
+                        Text(" Qty: ${item.quantity}"),
+                      ]
+                    )
                   );
                 },
               ),
-            ),
+            )
           ],
         ),
       ),
     );
   }
 }
-
