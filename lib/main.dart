@@ -27,7 +27,6 @@ class MyApp extends StatelessWidget {
 
 class ShoppingListPage extends StatefulWidget {
   final AppDatabase database;
-
   const ShoppingListPage({Key? key, required this.database}) : super(key: key);
 
   @override
@@ -40,6 +39,7 @@ class _ShoppingListPageState extends State<ShoppingListPage> {
 
   List<Item> _items = [];
   Item? _selectedItem;
+
   @override
   void initState() {
     super.initState();
